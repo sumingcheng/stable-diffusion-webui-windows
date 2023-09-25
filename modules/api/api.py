@@ -337,53 +337,74 @@ class Api:
         return script_args
 
     def text2imgapi(self, txt2imgreq: models.StableDiffusionTxt2ImgProcessingAPI):
+        # 获取与文本到图像脚本相关的运行器
         script_runner = scripts.scripts_txt2img
+
+        # 如果运行器没有预加载的脚本，初始化脚本并创建用户界面
         if not script_runner.scripts:
             script_runner.initialize_scripts(False)
             ui.create_ui()
+
+        # 如果没有默认的文本到图像脚本参数，使用运行器初始化它们
         if not self.default_script_arg_txt2img:
             self.default_script_arg_txt2img = self.init_default_script_args(script_runner)
+
+        # 获取可选择的脚本及其索引
         selectable_scripts, selectable_script_idx = self.get_selectable_script(txt2imgreq.script_name, script_runner)
 
-        populate = txt2imgreq.copy(update={  # Override __init__ params
-            "sampler_name": validate_sampler_name(txt2imgreq.sampler_name or txt2imgreq.sampler_index),
-            "do_not_save_samples": not txt2imgreq.save_images,
-            "do_not_save_grid": not txt2imgreq.save_images,
+        # 复制请求参数，并根据需要更新某些参数
+        populate = txt2imgreq.copy(update={
+            "sampler_name": validate_sampler_name(txt2imgreq.sampler_name or txt2imgreq.sampler_index),  # 验证采样器名称
+            "do_not_save_samples": not txt2imgreq.save_images,  # 确定是否保存样本
+            "do_not_save_grid": not txt2imgreq.save_images,  # 确定是否保存网格
         })
-        if populate.sampler_name:
-            populate.sampler_index = None  # prevent a warning later on
 
+        # 如果提供了采样器名称，则将采样器索引设置为None以避免后续警告
+        if populate.sampler_name:
+            populate.sampler_index = None
+
+        # 将populate对象转换为字典
         args = vars(populate)
+        # 从args字典中删除不需要的键
         args.pop('script_name', None)
-        args.pop('script_args', None)  # will refeed them to the pipeline directly after initializing them
+        args.pop('script_args', None)
         args.pop('alwayson_scripts', None)
 
+        # 初始化脚本参数
         script_args = self.init_script_args(txt2imgreq, self.default_script_arg_txt2img, selectable_scripts, selectable_script_idx, script_runner)
 
+        # 确定是否发送图像
         send_images = args.pop('send_images', True)
+        # 从args字典中删除保存图像的键
         args.pop('save_images', None)
 
+        # 使用队列锁确保线程安全
         with self.queue_lock:
+            # 使用传递的参数创建一个StableDiffusionProcessingTxt2Img对象，并确保在执行完后关闭它
             with closing(StableDiffusionProcessingTxt2Img(sd_model=shared.sd_model, **args)) as p:
                 p.is_api = True
                 p.scripts = script_runner
                 p.outpath_grids = opts.outdir_txt2img_grids
                 p.outpath_samples = opts.outdir_txt2img_samples
 
+                # 尝试执行脚本或图像处理
                 try:
                     shared.state.begin(job="scripts_txt2img")
                     if selectable_scripts is not None:
                         p.script_args = script_args
-                        processed = scripts.scripts_txt2img.run(p, *p.script_args)  # Need to pass args as list here
+                        processed = scripts.scripts_txt2img.run(p, *p.script_args)
                     else:
-                        p.script_args = tuple(script_args)  # Need to pass args as tuple here
+                        p.script_args = tuple(script_args)
                         processed = process_images(p)
+                # 无论是否成功，都确保清理状态
                 finally:
                     shared.state.end()
                     shared.total_tqdm.clear()
 
+        # 如果需要发送图像，将处理后的图像编码为base64
         b64images = list(map(encode_pil_to_base64, processed.images)) if send_images else []
 
+        # 返回文本到图像的响应，其中包括图像、参数和其他信息
         return models.TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=processed.js())
 
     def img2imgapi(self, img2imgreq: models.StableDiffusionImg2ImgProcessingAPI):

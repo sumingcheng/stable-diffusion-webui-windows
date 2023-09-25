@@ -26,6 +26,7 @@ API_NOT_ALLOWED = [
     "ddim_discretize"
 ]
 
+
 class ModelDef(BaseModel):
     """Assistance Class for Pydantic Dynamic Model Generation"""
 
@@ -38,27 +39,37 @@ class ModelDef(BaseModel):
 
 class PydanticModelGenerator:
     """
-    Takes in created classes and stubs them out in a way FastAPI/Pydantic is happy about:
-    source_data is a snapshot of the default values produced by the class
-    params are the names of the actual keys required by __init__
+    为FastAPI/Pydantic生成动态的Pydantic模型。
+    根据传入的类和其他字段定义，这个生成器可以创建一个Pydantic模型。
+
+    参数:
+    - model_name: 生成的模型名称。
+    - class_instance: 要转换为Pydantic模型的类。
+    - additional_fields: 除了类中的字段外，还要添加到模型中的其他字段定义。
     """
 
     def __init__(
-        self,
-        model_name: str = None,
-        class_instance = None,
-        additional_fields = None,
+            self,
+            model_name: str = None,
+            class_instance=None,
+            additional_fields=None,
     ):
         def field_type_generator(k, v):
+            """
+            根据字段的注释确定字段的类型。
+            """
             field_type = v.annotation
 
             if field_type == 'Image':
-                # images are sent as base64 strings via API
+                # 通过API发送的图像作为base64字符串
                 field_type = 'str'
 
             return Optional[field_type]
 
         def merge_class_params(class_):
+            """
+            合并类及其所有父类的参数。
+            """
             all_classes = list(filter(lambda x: x is not object, inspect.getmro(class_)))
             parameters = {}
             for classes in all_classes:
@@ -68,6 +79,7 @@ class PydanticModelGenerator:
         self._model_name = model_name
         self._class_data = merge_class_params(class_instance)
 
+        # 根据类的数据创建模型定义
         self._model_def = [
             ModelDef(
                 field=underscore(k),
@@ -75,9 +87,10 @@ class PydanticModelGenerator:
                 field_type=field_type_generator(k, v),
                 field_value=None if isinstance(v.default, property) else v.default
             )
-            for (k,v) in self._class_data.items() if k not in API_NOT_ALLOWED
+            for (k, v) in self._class_data.items() if k not in API_NOT_ALLOWED
         ]
 
+        # 添加额外的字段到模型定义
         for fields in additional_fields:
             self._model_def.append(ModelDef(
                 field=underscore(fields["key"]),
@@ -88,8 +101,11 @@ class PydanticModelGenerator:
 
     def generate_model(self):
         """
-        Creates a pydantic BaseModel
-        from the json and overrides provided at initialization
+        根据初始化时提供的json和覆盖，创建一个pydantic BaseModel。
+        使用存储在self._model_def中的字段定义来生成模型。
+
+        返回:
+        - 动态创建的Pydantic模型类。
         """
         fields = {
             d.field: (d.field_type, Field(default=d.field_value, alias=d.field_alias, exclude=d.field_exclude)) for d in self._model_def
@@ -99,16 +115,17 @@ class PydanticModelGenerator:
         DynamicModel.__config__.allow_mutation = True
         return DynamicModel
 
+
 StableDiffusionTxt2ImgProcessingAPI = PydanticModelGenerator(
     "StableDiffusionProcessingTxt2Img",
     StableDiffusionProcessingTxt2Img,
     [
-        {"key": "sampler_index", "type": str, "default": "Euler"},
-        {"key": "script_name", "type": str, "default": None},
-        {"key": "script_args", "type": list, "default": []},
-        {"key": "send_images", "type": bool, "default": True},
-        {"key": "save_images", "type": bool, "default": False},
-        {"key": "alwayson_scripts", "type": dict, "default": {}},
+        {"key": "sampler_index", "type": str, "default": "Euler", "description": "采样器索引"},
+        {"key": "script_name", "type": str, "default": None, "description": "脚本名称"},
+        {"key": "script_args", "type": list, "default": [], "description": "脚本参数"},
+        {"key": "send_images", "type": bool, "default": True, "description": "是否发送图像"},
+        {"key": "save_images", "type": bool, "default": False, "description": "是否保存图像"},
+        {"key": "alwayson_scripts", "type": dict, "default": {}, "description": "总是打开的脚本"},
     ]
 ).generate_model()
 
@@ -120,7 +137,7 @@ StableDiffusionImg2ImgProcessingAPI = PydanticModelGenerator(
         {"key": "init_images", "type": list, "default": None},
         {"key": "denoising_strength", "type": float, "default": 0.75},
         {"key": "mask", "type": str, "default": None},
-        {"key": "include_init_images", "type": bool, "default": False, "exclude" : True},
+        {"key": "include_init_images", "type": bool, "default": False, "exclude": True},
         {"key": "script_name", "type": str, "default": None},
         {"key": "script_args", "type": list, "default": []},
         {"key": "send_images", "type": bool, "default": True},
@@ -129,15 +146,18 @@ StableDiffusionImg2ImgProcessingAPI = PydanticModelGenerator(
     ]
 ).generate_model()
 
+
 class TextToImageResponse(BaseModel):
     images: List[str] = Field(default=None, title="Image", description="The generated image in base64 format.")
     parameters: dict
     info: str
 
+
 class ImageToImageResponse(BaseModel):
     images: List[str] = Field(default=None, title="Image", description="The generated image in base64 format.")
     parameters: dict
     info: str
+
 
 class ExtrasBaseRequest(BaseModel):
     resize_mode: Literal[0, 1] = Field(default=0, title="Resize Mode", description="Sets the resize mode: 0 to upscale by upscaling_resize amount, 1 to upscale up to upscaling_resize_h x upscaling_resize_w.")
@@ -154,34 +174,44 @@ class ExtrasBaseRequest(BaseModel):
     extras_upscaler_2_visibility: float = Field(default=0, title="Secondary upscaler visibility", ge=0, le=1, allow_inf_nan=False, description="Sets the visibility of secondary upscaler, values should be between 0 and 1.")
     upscale_first: bool = Field(default=False, title="Upscale first", description="Should the upscaler run before restoring faces?")
 
+
 class ExtraBaseResponse(BaseModel):
     html_info: str = Field(title="HTML info", description="A series of HTML tags containing the process info.")
+
 
 class ExtrasSingleImageRequest(ExtrasBaseRequest):
     image: str = Field(default="", title="Image", description="Image to work on, must be a Base64 string containing the image's data.")
 
+
 class ExtrasSingleImageResponse(ExtraBaseResponse):
     image: str = Field(default=None, title="Image", description="The generated image in base64 format.")
+
 
 class FileData(BaseModel):
     data: str = Field(title="File data", description="Base64 representation of the file")
     name: str = Field(title="File name")
 
+
 class ExtrasBatchImagesRequest(ExtrasBaseRequest):
     imageList: List[FileData] = Field(title="Images", description="List of images to work on. Must be Base64 strings")
+
 
 class ExtrasBatchImagesResponse(ExtraBaseResponse):
     images: List[str] = Field(title="Images", description="The generated images in base64 format.")
 
+
 class PNGInfoRequest(BaseModel):
     image: str = Field(title="Image", description="The base64 encoded PNG image")
+
 
 class PNGInfoResponse(BaseModel):
     info: str = Field(title="Image info", description="A string with the parameters used to generate the image")
     items: dict = Field(title="Items", description="An object containing all the info the image had")
 
+
 class ProgressRequest(BaseModel):
     skip_current_image: bool = Field(default=False, title="Skip current image", description="Skip current image serialization")
+
 
 class ProgressResponse(BaseModel):
     progress: float = Field(title="Progress", description="The progress with a range of 0 to 1")
@@ -190,21 +220,27 @@ class ProgressResponse(BaseModel):
     current_image: str = Field(default=None, title="Current image", description="The current image in base64 format. opts.show_progress_every_n_steps is required for this to work.")
     textinfo: str = Field(default=None, title="Info text", description="Info text used by WebUI.")
 
+
 class InterrogateRequest(BaseModel):
     image: str = Field(default="", title="Image", description="Image to work on, must be a Base64 string containing the image's data.")
     model: str = Field(default="clip", title="Model", description="The interrogate model used.")
 
+
 class InterrogateResponse(BaseModel):
     caption: str = Field(default=None, title="Caption", description="The generated caption for the image.")
+
 
 class TrainResponse(BaseModel):
     info: str = Field(title="Train info", description="Response string from train embedding or hypernetwork task.")
 
+
 class CreateResponse(BaseModel):
     info: str = Field(title="Create info", description="Response string from create embedding or hypernetwork task.")
 
+
 class PreprocessResponse(BaseModel):
     info: str = Field(title="Preprocess info", description="Response string from preprocessing task.")
+
 
 fields = {}
 for key, metadata in opts.data_labels.items():
@@ -221,7 +257,7 @@ OptionsModel = create_model("Options", **fields)
 flags = {}
 _options = vars(parser)['_option_string_actions']
 for key in _options:
-    if(_options[key].dest != 'help'):
+    if (_options[key].dest != 'help'):
         flag = _options[key]
         _type = str
         if _options[key].default is not None:
@@ -230,10 +266,12 @@ for key in _options:
 
 FlagsModel = create_model("Flags", **flags)
 
+
 class SamplerItem(BaseModel):
     name: str = Field(title="Name")
     aliases: List[str] = Field(title="Aliases")
     options: Dict[str, str] = Field(title="Options")
+
 
 class UpscalerItem(BaseModel):
     name: str = Field(title="Name")
@@ -242,8 +280,10 @@ class UpscalerItem(BaseModel):
     model_url: Optional[str] = Field(title="URL")
     scale: Optional[float] = Field(title="Scale")
 
+
 class LatentUpscalerModeItem(BaseModel):
     name: str = Field(title="Name")
+
 
 class SDModelItem(BaseModel):
     title: str = Field(title="Title")
@@ -253,22 +293,27 @@ class SDModelItem(BaseModel):
     filename: str = Field(title="Filename")
     config: Optional[str] = Field(title="Config file")
 
+
 class SDVaeItem(BaseModel):
     model_name: str = Field(title="Model Name")
     filename: str = Field(title="Filename")
+
 
 class HypernetworkItem(BaseModel):
     name: str = Field(title="Name")
     path: Optional[str] = Field(title="Path")
 
+
 class FaceRestorerItem(BaseModel):
     name: str = Field(title="Name")
     cmd_dir: Optional[str] = Field(title="Path")
+
 
 class RealesrganItem(BaseModel):
     name: str = Field(title="Name")
     path: Optional[str] = Field(title="Path")
     scale: Optional[int] = Field(title="Scale")
+
 
 class PromptStyleItem(BaseModel):
     name: str = Field(title="Name")
@@ -283,9 +328,11 @@ class EmbeddingItem(BaseModel):
     shape: int = Field(title="Shape", description="The length of each individual vector in the embedding")
     vectors: int = Field(title="Vectors", description="The number of vectors in the embedding")
 
+
 class EmbeddingsResponse(BaseModel):
     loaded: Dict[str, EmbeddingItem] = Field(title="Loaded", description="Embeddings loaded for the current model")
     skipped: Dict[str, EmbeddingItem] = Field(title="Skipped", description="Embeddings skipped for the current model (likely due to architecture incompatibility)")
+
 
 class MemoryResponse(BaseModel):
     ram: dict = Field(title="RAM", description="System memory stats")
