@@ -10,7 +10,7 @@ import gradio as gr
 from threading import Lock
 from io import BytesIO
 from fastapi import APIRouter, Depends, FastAPI, Request, Response
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.security import HTTPBasic, HTTPBasicCredentials, HTTPBearer
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -197,6 +197,7 @@ def api_middleware(app: FastAPI):
         return handle_exception(request, e)
 
 
+# 53huifdso345ijedof345js09wfqpoew authorization
 class Api:
     def __init__(self, app: FastAPI, queue_lock: Lock):
         if shared.cmd_opts.api_auth:
@@ -255,7 +256,7 @@ class Api:
     def add_api_route(self, path: str, endpoint, **kwargs):
         if shared.cmd_opts.api_auth:
             return self.app.add_api_route(path, endpoint, dependencies=[Depends(self.auth)], **kwargs)
-        return self.app.add_api_route(path, endpoint, **kwargs)
+        return self.app.add_api_route(path, endpoint,dependencies=[Depends(self.auth_token)], **kwargs)
 
     def auth(self, credentials: HTTPBasicCredentials = Depends(HTTPBasic())):
         if credentials.username in self.credentials:
@@ -263,6 +264,18 @@ class Api:
                 return True
 
         raise HTTPException(status_code=401, detail="Incorrect username or password", headers={"WWW-Authenticate": "Basic"})
+
+    def auth_token(self, request: Request, http_bearer: HTTPBearer = Depends()):
+        static_token = "53huifdso345ijedof345js09wfqpoew"
+
+        # 尝试从请求头中获取token
+        authorization: str = request.headers.get('Authorization')
+        print("authorization:", authorization)
+        # 如果`Authorization`头不存在或者token不匹配，返回401状态码
+        if authorization is None or authorization != f"Bearer {static_token}":
+            raise HTTPException(status_code=401, detail="Incorrect token")
+
+        return True
 
     def get_selectable_script(self, script_name, script_runner):
         if script_name is None or script_name == "":
@@ -409,6 +422,7 @@ class Api:
 
     def img2imgapi(self, img2imgreq: models.StableDiffusionImg2ImgProcessingAPI):
         init_images = img2imgreq.init_images
+        # print(init_images)
         if init_images is None:
             raise HTTPException(status_code=404, detail="Init image not found")
 
