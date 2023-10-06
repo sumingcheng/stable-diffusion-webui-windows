@@ -256,7 +256,7 @@ class Api:
     def add_api_route(self, path: str, endpoint, **kwargs):
         if shared.cmd_opts.api_auth:
             return self.app.add_api_route(path, endpoint, dependencies=[Depends(self.auth)], **kwargs)
-        return self.app.add_api_route(path, endpoint,dependencies=[Depends(self.auth_token)], **kwargs)
+        return self.app.add_api_route(path, endpoint, dependencies=[Depends(self.auth_token)], **kwargs)
 
     def auth(self, credentials: HTTPBasicCredentials = Depends(HTTPBasic())):
         if credentials.username in self.credentials:
@@ -608,7 +608,7 @@ class Api:
             shared.opts.set(k, v, is_api=True)
 
         shared.opts.save(shared.config_filename)
-        return
+        return {"mag": "success"}
 
     def get_cmd_flags(self):
         return vars(shared.cmd_opts)
