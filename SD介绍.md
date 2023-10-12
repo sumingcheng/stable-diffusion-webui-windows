@@ -271,7 +271,7 @@ Lora训练总步数：1500~6000
 
 ### **UniPC**
 
-> 目前最新采样器，基于Wenliang Zhao等人)的论文
+> 目前最新采样器，基于Wenliang Zhao等人的论文
 >
 > 理论上目前最快采样器，10步即可获得高质量结果
 
@@ -465,3 +465,4 @@ a busy city street in a modern city, illustration, cinematic lighting
 ### 图像增强/Extras
 
 高清修复是图像增强/Extras的一部分
+
