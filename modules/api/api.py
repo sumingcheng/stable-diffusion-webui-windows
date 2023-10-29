@@ -14,6 +14,8 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials, HTTPBearer
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
+from fastapi.middleware.cors import CORSMiddleware
+
 from secrets import compare_digest
 
 import modules.shared as shared
@@ -134,6 +136,13 @@ def encode_pil_to_base64(image):
 
 
 def api_middleware(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # 允许所有源
+        allow_credentials=True,
+        allow_methods=["*"],  # 允许所有方法
+        allow_headers=["*"],  # 允许所有头
+    )
     rich_available = False
     try:
         if os.environ.get('WEBUI_RICH_EXCEPTIONS', None) is not None:
@@ -264,6 +273,7 @@ class Api:
                 return True
 
         raise HTTPException(status_code=401, detail="Incorrect username or password", headers={"WWW-Authenticate": "Basic"})
+
 
     def auth_token(self, request: Request, http_bearer: HTTPBearer = Depends()):
         static_token = "53huifdso345ijedof345js09wfqpoew"
@@ -573,7 +583,9 @@ class Api:
     def interruptapi(self):
         shared.state.interrupt()
 
-        return {}
+        return {
+            "mag": "success",
+        }
 
     def unloadapi(self):
         unload_model_weights()
